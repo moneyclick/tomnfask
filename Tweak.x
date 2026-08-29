@@ -7,7 +7,7 @@ static const CGFloat kLeadingOffsetX  = 16.0;
 static const CGFloat kTrailingOffsetX = 16.0;
 static const CGFloat kVerticalOffsetY = 2.0;
 
-static void applyOffsetsToStatusBar(UIView *bar) {
+static void applyOffsetsToStatusBar(id bar) {
     if (!bar) return;
 
     NSDictionary *regions = nil;
