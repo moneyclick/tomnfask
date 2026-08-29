@@ -4,9 +4,12 @@
 <dict>
     <key>Filter</key>
     <dict>
+        <key>Classes</key>
+        <array>
+            <string>UIApplication</string>
+        </array>
         <key>Bundles</key>
         <array>
-            <string>com.apple.UIKit</string>
             <string>com.apple.springboard</string>
         </array>
     </dict>
