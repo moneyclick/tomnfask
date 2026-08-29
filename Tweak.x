@@ -1,71 +1,95 @@
 #import <UIKit/UIKit.h>
+#import <dlfcn.h>
+#import <objc/runtime.h>
 
-@interface _UIStatusBarRegion : NSObject
-@property (nonatomic, copy, readonly) NSString *identifier;
-@property (nonatomic, strong, readonly) UIView *contentView;
-@end
+// Увеличенные отступы (16pt), чтобы разница была видна сразу и четко
+static const CGFloat kLeadingOffsetX  = 16.0;
+static const CGFloat kTrailingOffsetX = 16.0;
+static const CGFloat kVerticalOffsetY = 2.0;
 
-@interface _UIStatusBar : UIView
-@property (nonatomic, strong, readonly) NSDictionary *regions;
-@end
+static void applyOffsetsToStatusBar(UIView *bar) {
+    if (!bar) return;
 
-@interface _UIStatusBarVisualProvider_Split : NSObject
-+ (double)height;
-- (struct NSDirectionalEdgeInsets)edgeInsets;
-@end
+    NSDictionary *regions = nil;
+    if ([bar respondsToSelector:@selector(regions)]) {
+        #pragma clang diagnostic push
+        #pragma clang diagnostic ignored "-Warc-performSelector-leaks"
+        regions = [bar performSelector:@selector(regions)];
+        #pragma clang diagnostic pop
+    } else {
+        @try {
+            regions = [bar valueForKey:@"_regions"];
+        } @catch (id e) {}
+    }
 
-// Смещение для iPhone X:
-// +12.0pt вправо для времени (слева)
-// -12.0pt влево для сети/Wi-Fi/батареи (справа)
-// +1.5pt вниз для центрирования по вертикали
-static const CGFloat kLeadingOffsetX  = 12.0;
-static const CGFloat kTrailingOffsetX = 12.0;
-static const CGFloat kVerticalOffsetY = 1.5;
+    if (![regions isKindOfClass:[NSDictionary class]]) return;
+
+    for (NSString *key in regions) {
+        id region = regions[key];
+        NSString *identifier = nil;
+        if ([region respondsToSelector:@selector(identifier)]) {
+            #pragma clang diagnostic push
+            #pragma clang diagnostic ignored "-Warc-performSelector-leaks"
+            identifier = [region performSelector:@selector(identifier)];
+            #pragma clang diagnostic pop
+        }
+        if (!identifier || identifier.length == 0) {
+            identifier = key;
+        }
+
+        UIView *contentView = nil;
+        if ([region respondsToSelector:@selector(contentView)]) {
+            #pragma clang diagnostic push
+            #pragma clang diagnostic ignored "-Warc-performSelector-leaks"
+            contentView = [region performSelector:@selector(contentView)];
+            #pragma clang diagnostic pop
+        }
+        if (!contentView || ![contentView isKindOfClass:[UIView class]]) continue;
+
+        // Время (левая сторона)
+        if ([identifier isEqualToString:@"leading"] ||
+            [identifier rangeOfString:@"leading" options:NSCaseInsensitiveSearch].location != NSNotFound) {
+            contentView.transform = CGAffineTransformMakeTranslation(kLeadingOffsetX, kVerticalOffsetY);
+        }
+        // Сеть, Wi-Fi, Батарея (правая сторона)
+        else if ([identifier isEqualToString:@"trailing"] ||
+                   [identifier rangeOfString:@"trailing" options:NSCaseInsensitiveSearch].location != NSNotFound) {
+            contentView.transform = CGAffineTransformMakeTranslation(-kTrailingOffsetX, kVerticalOffsetY);
+        }
+    }
+}
+
+%group SpringBoardHooks
+
+%hook STUIStatusBar
+
+- (void)layoutSubviews {
+    %orig;
+    applyOffsetsToStatusBar(self);
+}
+
+%end
+
+%hook STUIStatusBarVisualProvider_Split
+
+- (struct NSDirectionalEdgeInsets)edgeInsets {
+    struct NSDirectionalEdgeInsets insets = %orig;
+    insets.leading += kLeadingOffsetX;
+    insets.trailing += kTrailingOffsetX;
+    return insets;
+}
+
+%end
+
+%end
+
+%group UIKitHooks
 
 %hook _UIStatusBar
 
 - (void)layoutSubviews {
     %orig;
-
-    NSDictionary *regions = nil;
-    if ([self respondsToSelector:@selector(regions)]) {
-        regions = [self regions];
-    } else {
-        @try {
-            regions = [self valueForKey:@"_regions"];
-        } @catch (id e) {}
-    }
-
-    if ([regions isKindOfClass:[NSDictionary class]]) {
-        for (NSString *key in regions) {
-            id region = regions[key];
-            NSString *identifier = nil;
-            if ([region respondsToSelector:@selector(identifier)]) {
-                identifier = [region identifier];
-            }
-            if (!identifier || identifier.length == 0) {
-                identifier = key;
-            }
-
-            UIView *contentView = nil;
-            if ([region respondsToSelector:@selector(contentView)]) {
-                contentView = [region contentView];
-            }
-
-            if (!contentView) continue;
-
-            // Время слева
-            if ([identifier isEqualToString:@"leading"] ||
-                [identifier rangeOfString:@"leading" options:NSCaseInsensitiveSearch].location != NSNotFound) {
-                contentView.transform = CGAffineTransformMakeTranslation(kLeadingOffsetX, kVerticalOffsetY);
-            }
-            // Связь, Wi-Fi и батарея справа
-            else if ([identifier isEqualToString:@"trailing"] ||
-                       [identifier rangeOfString:@"trailing" options:NSCaseInsensitiveSearch].location != NSNotFound) {
-                contentView.transform = CGAffineTransformMakeTranslation(-kTrailingOffsetX, kVerticalOffsetY);
-            }
-        }
-    }
+    applyOffsetsToStatusBar(self);
 }
 
 %end
@@ -80,3 +104,18 @@ static const CGFloat kVerticalOffsetY = 1.5;
 }
 
 %end
+
+%end
+
+%ctor {
+    // В iOS 16 статус-бар SpringBoard вынесен в SystemStatusUI.framework
+    dlopen("/System/Library/PrivateFrameworks/SystemStatusUI.framework/SystemStatusUI", RTLD_NOW);
+
+    if (objc_getClass("STUIStatusBar")) {
+        %init(SpringBoardHooks);
+    }
+
+    if (objc_getClass("_UIStatusBar")) {
+        %init(UIKitHooks);
+    }
+}

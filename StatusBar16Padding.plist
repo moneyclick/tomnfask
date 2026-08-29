@@ -4,6 +4,10 @@
 <dict>
     <key>Filter</key>
     <dict>
+        <key>Executables</key>
+        <array>
+            <string>SpringBoard</string>
+        </array>
         <key>Classes</key>
         <array>
             <string>UIApplication</string>
