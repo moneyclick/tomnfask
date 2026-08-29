@@ -1,0 +1,9 @@
+Package: com.jack.statusbar16padding
+Name: StatusBar16Padding
+Depends: mobilesubstrate (>= 0.9.5000)
+Version: 1.0.0
+Architecture: iphoneos-arm64
+Description: Modern 15/16 Pro Max status bar spacing and padding for iPhone X (iOS 15-16 Dopamine)
+Maintainer: Jack & Fox
+Author: Jack & Fox
+Section: Tweaks
